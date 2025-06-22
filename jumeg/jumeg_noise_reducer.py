@@ -599,6 +599,7 @@ def noise_reducer(fname_raw, raw=None, signals=[], noiseref=[], detrending=None,
         rawsig = raw.copy()
         rawsig.pick(sigpick)
         idx_by_typesig = channel_indices_by_type(rawsig.info)
+    
 
         # Read data in chunks:
         tstep = 0.2

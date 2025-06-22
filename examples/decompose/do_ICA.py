@@ -18,7 +18,7 @@ plt.ion()
 import numpy as np
 import mne
 from jumeg.decompose.ica_replace_mean_std import ICA, ica_update_mean_std
-from keras.models import load_model
+#from keras.models import load_model
 from jumeg.jumeg_noise_reducer import noise_reducer
 from jumeg.jumeg_preprocessing import get_ics_cardiac, get_ics_ocular
 from jumeg.jumeg_plot import plot_performance_artifact_rejection
@@ -46,34 +46,29 @@ ix_t1 = 0                              # time index: here we use the first chop
 ix_t2 = ix_t1 + nsamples_chop
 
 # ----------------------------------------------
-# load DCNN model for artifact rejection
-# the details of the model is provided in:
-#       x_validation_shuffle_v4_split_23.txt
-# model was trained on 4D data from Juelich
-# ----------------------------------------------
-#model_path = op.join(get_jumeg_path(), 'data')
-
-##model_name = op.join(r'C:\Users\paula\OneDrive\Escritorio\FourierICA\jumeg\jumeg\data', "dcnn_model.hdf5")
-##print(model_name)
-model = load_model(model_name)
-#from tensorflow.keras.models import load_model
-
-model_name = op.join(r'C:\Users\paula\OneDrive\Escritorio\FourierICA\jumeg\jumeg\data', "dcnn_model.hdf5")
-
-with open(model_name, "r") as f:
-    model_config = op.join(f)  # Cargar la configuración del modelo sin `decode`
-
-model = load_model(model_name, compile=False)  # Intenta sin `decode`
-
-# ----------------------------------------------
 # read example data file
 # ----------------------------------------------
-path_data = '/data/megraid22/Common/DeepLearning/cau_data_validation/'
-raw_fname = path_data + 'sub-CTR001_ses-V0_task-CE_desc-wavelet_eeg.fif'
-raw = mne.io.Raw(raw_fname, preload=True)
+#path_data = '/data/megraid22/Common/DeepLearning/cau_data_validation/'
+#raw_fname = path_data + '109925_CAU01A_100715_0842_2_c,rfDC,t1,n_bcc,nr-raw.fif'
+#raw = mne.io.Raw(raw_fname, preload=True)
+
+
+import os
+
+import mne
+
+sample_data_folder = mne.datasets.sample.data_path()
+
+print(sample_data_folder)
+
+sample_data_raw_file = os.path.join(
+    sample_data_folder, "MEG", "sample", "sample_audvis_raw.fif"
+)
+raw = mne.io.read_raw_fif(sample_data_raw_file)
+raw.crop(tmax=60).load_data()
+
 picks = mne.pick_types(raw.info, meg=True, eeg=False, eog=False,
                        stim=False, exclude='bads')
-
 
 # ----------------------------------------------
 # filtering and down sampling
@@ -103,33 +98,23 @@ raw_filtered.close()
 # ----------------------------------------------
 # apply ICA
 # ----------------------------------------------
+#ica = ICA(method='fastica', n_components=n_components, random_state=42,
+#          max_pca_components=None, max_iter=5000, verbose=None)
+
 ica = ICA(method='fastica', n_components=n_components, random_state=42,
           max_pca_components=None, max_iter=5000, verbose=None)
+
 # do the ICA decomposition on downsampled raw
 ica.fit(raw_ds_chop, picks=picks, reject=reject, verbose=None)
 sources = ica.get_sources(raw_ds_chop)._data                     # get sources
 sources = np.reshape(sources, (n_components,nsamples_chop, 1))   # reshape sources
 
-# ----------------------------------------------
-# model prediction
-# identification of artifact components
-# ----------------------------------------------
-# compute base functions
-mm = np.float32(np.dot(ica.mixing_matrix_[:, :ica.n_components_].T,
-                       ica.pca_components_[:ica.n_components_, :ica.max_pca_components]))
-# get model prediction
-model_scores = model.predict([mm, sources], verbose=1)
-# get ICs
-bads_MLICA = list(np.where(model_scores[:,0] > model_thresh)[0])
 
-# ----------------------------------------------
-# order ICs for visualization
-# ----------------------------------------------
-var_order = sources.std(axis=1).flatten().argsort()[::-1]
-good_ics = np.setdiff1d(var_order, bads_MLICA)
-ic_order = list(np.concatenate([bads_MLICA, good_ics]))
-# store components in ica object
-ica.exclude = list(bads_MLICA)
+from jumeg.decompose.icasso_test import JuMEG_icasso
+
+icasso_obj = JuMEG_icasso()
+W, A, quality, fourier_ica_obj = icasso_obj.fit(sample_data_raw_file, ica_method='fourierica')
+
 
 
 # ----------------------------------------------
@@ -137,16 +122,17 @@ ica.exclude = list(bads_MLICA)
 # ----------------------------------------------
 print('Identifying components..')
 # get ECG/EOG related components using JuMEG
-ic_ecg = get_ics_cardiac(raw_filtered_chop, ica, flow=flow_ecg, fhigh=fhigh_ecg,
-                         thresh=ecg_thresh, tmin=-0.5, tmax=0.5,
-                         name_ecg=ecg_ch, use_CTPS=True)[0]  # returns both ICs and scores (take only ICs)
+#ic_ecg = get_ics_cardiac(raw_filtered_chop, ica, flow=flow_ecg, fhigh=fhigh_ecg,
+#                         thresh=ecg_thresh, tmin=-0.5, tmax=0.5,
+#                         name_ecg=ecg_ch, use_CTPS=True)[0]  # returns both ICs and scores (take only ICs)
 ic_eog = get_ics_ocular(raw_filtered_chop, ica, flow=flow_eog, fhigh=fhigh_eog,
                         thresh=eog_thresh, name_eog_hor=eog1_ch,
                         name_eog_ver=eog2_ch, score_func='pearsonr')
+ic_ecg = []
 bads_corr_ctps = list(ic_ecg) + list(ic_eog)
 bads_corr_ctps = list(set(bads_corr_ctps))  # remove potential duplicates
 bads_corr_ctps.sort()
-print('Bad components from MLICA:', bads_MLICA)
+
 print('Bad components from correlation & ctps:', bads_corr_ctps)
 
 
@@ -154,7 +140,7 @@ print('Bad components from correlation & ctps:', bads_corr_ctps)
 # plot results
 # ----------------------------------------------
 # plot sources
-fig = ica.plot_sources(raw_filtered_chop, picks=ic_order, title='MLICA', show=False)
+#fig = ica.plot_sources(raw_filtered_chop, picks=ic_order, title='MLICA', show=False)
 #fig.savefig('MLICA_ica-sources.png')
 
 # plot artifact rejection performance
