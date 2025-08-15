@@ -58,7 +58,7 @@ W, A, quality, fourier_ica_obj = icasso_obj.fit(fn_raw, stim_name='STI 013',
 # import necessary modules
 # ------------------------------------------
 import numpy as np
-
+import pandas as pd
 
 ########################################################
 #                                                      #
@@ -973,26 +973,26 @@ class JuMEG_icasso(object):
         # ------------------------------------------
         meg_raw = Raw(fn_raw, preload=True)#mne.io.read_raw_fif(fn_raw, preload=True)#Raw(fn_raw, preload=True)
 
-        print("LUEGO DE LA CARGA##################################")
-        print(meg_raw)
-        print("##################################")
+        # print("LUEGO DE LA CARGA##################################")
+        # print(meg_raw)
+        # print("##################################")
 
         # interpolate bad channels
         if interpolate_bads:
             meg_raw.interpolate_bads()
 
-        print("LUEGO DE INTERPOLA##################################")
-        print(meg_raw)
-        print("##################################")
+        # print("LUEGO DE INTERPOLA##################################")
+        # print(meg_raw)
+        # print("##################################")
 
         meg_channels = pick_types(meg_raw.info, meg=False, eeg=True,
                                   eog=False, stim=False, exclude='bads')
         meg_data = meg_raw._data[meg_channels, :]
         sfreq = meg_raw.info['sfreq']
 
-        print("LUEGO DE SELECC##################################")
-        print(meg_data)
-        print("##################################")
+        # print("LUEGO DE SELECC##################################")
+        # print(meg_data)
+        # print("##################################")
 
         # check if ICASSO should be applied
         # to evoked or resting state data
@@ -1058,9 +1058,9 @@ class JuMEG_icasso(object):
         # space
         # ------------------------------------------
 
-        print("SOLUCION INV##################################")
-        print(fn_inv)
-        print("##################################")
+        # print("SOLUCION INV##################################")
+        # print(fn_inv)
+        # print("##################################")
 
         if fn_inv:
 
@@ -1109,9 +1109,9 @@ class JuMEG_icasso(object):
                 if verbose:
                      print(">>> transform data to Fourier space...")
 
-                print("##################################")
-                print(meg_raw)
-                print("##################################")
+                # print("##################################")
+                # print(meg_raw)
+                # print("##################################")
 
                 win_length_sec = tmax_stim - tmin_stim
                 X, _ = apply_stft(meg_data, events=events, tpre=tmin_stim,
@@ -1177,9 +1177,9 @@ class JuMEG_icasso(object):
             src_loc_data = None
 
 
-        print("ANTES RETURN ##################################")
-        print(meg_data)
-        print("##################################")
+        # print("ANTES RETURN ##################################")
+        # print(meg_data)
+        # print("##################################")
 
         return meg_data, src_loc_data, vertno, data_already_stft, events, sfreq, meg_channels
 
@@ -1336,10 +1336,14 @@ class JuMEG_icasso(object):
             self.W_est.append(W_orig)
             self.A_est.append(A_orig)
 
+            import sys
+            import time
+
             # print out some information
             if verbose and self.nrep > 1:
-                print(">>> Running FourierICA number %d of %d done" % (irep+1, self.nrep))
-
+                #print(">>> Running FourierICA number %d of %d done" % (irep+1, self.nrep))
+                sys.stdout.write(f"\r>>> Running FourierICA {irep + 1} of {self.nrep} done")
+                sys.stdout.flush()
                 if irep == 0:
                     str_hamming_window = "True" if fourier_ica_obj.hamming_data else "False"
                     str_complex_mixing = "True" if fourier_ica_obj.complex_mixing else "False"
@@ -1662,9 +1666,9 @@ class JuMEG_icasso(object):
                                           verbose=verbose)
             normalized = False
 
-        print("LUEGO DEL PREPARE##################################")
-        print(meg_data)
-        print("##################################")
+        # print("LUEGO DEL PREPARE##################################")
+        # print(meg_data)
+        # print("##################################")
 
         self._sfreq = sfreq
         # ------------------------------------------
@@ -1792,30 +1796,116 @@ class JuMEG_icasso(object):
         # ------------------------------------------
         return W, A, Iq, fourier_ica_obj
 
+
+"""
+Fragmento modificado del script original:
+
+Modificación realizada por: John F. Ochoa Gómez, Paula Andrea C Cano, Sara Gárces, Juan Esteba Pineda
+Fecha: 08-2025
+
+Motivo de la modificación:
+Adaptar el código original para su uso con datos de EEG de baja densidad (8 canales),
+optimizando el procesamiento ICA y filtrado para datasets reducidos. La modificación permite:
+- Seleccionar solo los 8 canales de interés.
+- Ajustar parámetros de ICA para bajo número de canales.
+
+Integración:
+Este fragmento se anexa para ejecutar el script a un conjunto de datos seleccionados de una
+base de datos local.
+
+Notas:
+- Mantiene la lógica del script original, pero ajusta los parámetros `n_components` y
+  el filtrado según el número reducido de canales.
+- Compatible únicamente con datos EEG (sin MEG u otros sensores).
+
+Entradas:
+- Archivo .fif con la señal filtrada por un filtro wavelet.
+
+Salidas:
+- Archivo .npz con sufijo anexo "_wICAsso_raw.fif", contiene la señal filtrada y
+  descompuesta por FourierICA de forma iterativa.
+- Archivo .npz con sufijo anexo "_ICAdata.npz", contiene las matrices W, A y quality.
+
+Dependencias:
+- Python 3.6.13
+- numpy
+- mne 
+- os
+- warnings
+- matplotlib.pyplot
+- seaborn
+- scipy.io
+"""
+
+import os
 import mne
+import scipy.io as sio
+import warnings
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-path_data = 'C:/Users/paula/OneDrive/Escritorio/FourierICA/jumeg/jumeg/data/'
-raw_fname = path_data + 'sub-CTR001_ses-V0_task-CE_desc-wavelet_eeg.fif'
-raw = mne.io.read_raw_fif(raw_fname, preload=True)
+# Ignorar error:
+# deprecatedC:\Users\paula\anaconda3\envs\jumeg_cuda\lib\site-packages\mne\io\tag.py:427: DeprecationWarning: 
+# tostring() is deprecated. Use tobytes() instead.
+# ch_name = ch_name[:np.argmax(ch_name == b'')].tostring()
+# import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*tostring\\(\\) is deprecated.*")
 
-icasso_obj = JuMEG_icasso()
-W, A, quality, fourier_ica_obj = icasso_obj.fit(raw_fname)
 
-print(raw.info)
-raw.info['ICA'] = {
-    'W': W,
-    'A': A,
-    'quality': quality
-}
-print(raw.info)
+path_data = 'C:/Users/paula/OneDrive/Escritorio/Portables/eeg_wavelet'
+output_folder = 'C:/Users/paula/OneDrive/Escritorio/Portables/eeg_wavelet/wICASSO/'
 
-print("W")
-print(W.shape)	
-print("A")
-print(A.shape)
-print("quality")
-print(quality)
-print("fourier_ica_obj")
-print(fourier_ica_obj)
+#  Lista todos los archivos .fif en la carpeta
+fif_files = [f for f in os.listdir(path_data)]
+#fif_files = [fif_files[0]]
+
+# Procesa cada archivo
+for fif_file in fif_files:
+
+    if not fif_file.endswith('.fif'):
+        print(f"Skipping {fif_file}, not a .fif file.")
+        continue
+    
+    icasso_obj = JuMEG_icasso() # Crea una nueva instancia de JuMEG_icasso para cada archivo
+    raw_path = os.path.join(path_data, fif_file) # Ruta completa del archivo .fif
+    print("---------------------------------------------------")
+    print(f">>>>>> PROCESANDO: {raw_path}")
+
+    raw = mne.io.read_raw_fif(raw_path, preload=True) # Carga el archivo .fif
+
+    raw = raw.filter(0, 50) #raw = raw.filter(l_freq=0.1, h_freq=50) # Filtrado de 0.1 a 50 Hz
+
+    # Ejecuta ICA Fourier
+    W, A, quality, fourier_ica_obj = icasso_obj.fit(raw_path, tmax_win = 2)
+    
+    # ica = mne.preprocessing.ICA(n_components=8, random_state=97, max_iter=1000) # Crea un objeto ICA con 8 componentes, una semilla aleatoria y un máximo de 1000 iteraciones
+
+    # Guarda el raw con los resultados embebidos
+    output_fif = os.path.basename(fif_file).replace('.fif', '_wICAsso_raw.fif')
+    output_fif_path = os.path.join(output_folder, output_fif)
+    raw.save(output_fif_path, overwrite=False)
+
+    np.savez(output_fif_path.replace('.fif', '_ICAdata.npz'), W=W, A=A, quality=quality)
+
+    
+    # # Guarda los resultados en CSV  ## YA SE CREARON TODOS##
+    # outputw_csv = os.path.basename(fif_file).replace('.fif', '_wICAsso_unmixing.csv')
+    # outputa_csv = os.path.basename(fif_file).replace('.fif', '_wICAsso_mixing.csv')
+    # output_quality_csv = os.path.basename(fif_file).replace('.fif', '_wICAsso_quality.csv')
+    
+    # W_df = pd.DataFrame(W)
+    # A_df = pd.DataFrame(A)
+    # quality_df = pd.DataFrame(quality, columns=['quality'])
+
+    # W_df.to_csv(os.path.join(output_folder, outputw_csv))
+    # A_df.to_csv(os.path.join(output_folder, outputa_csv))
+    # quality_df.to_csv(os.path.join(output_folder, output_quality_csv))
+
+    print(f"Resultados guardados en: {output_fif_path}")
+
+    # Aquí puedes guardar resultados o imprimir información adicional si quieres
+    print(f"Archivo procesado: {fif_file}")
+    print(f"W: {W.shape}")
+    print(f"A: {A.shape}")
+    print(f"Quality: {quality}")
+    print(fourier_ica_obj)

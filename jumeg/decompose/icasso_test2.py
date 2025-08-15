@@ -58,6 +58,7 @@ W, A, quality, fourier_ica_obj = icasso_obj.fit(fn_raw, stim_name='STI 013',
 # import necessary modules
 # ------------------------------------------
 import numpy as np
+import pandas as pd
 
 ########################################################
 #                                                      #
@@ -1796,54 +1797,89 @@ class JuMEG_icasso(object):
         return W, A, Iq, fourier_ica_obj
 
 
-# path_data = 'C:/Users/paula/OneDrive/Escritorio/FourierICA/jumeg/jumeg/data/'
-# raw_fname = path_data + 'sub-CTR001_ses-V0_task-CE_desc-wavelet_eeg.fif'
-# raw = mne.io.read_raw_fif(raw_fname, preload=True)
+"""
+Fragmento modificado del script original:
 
-# icasso_obj = JuMEG_icasso()
-# W, A, quality, fourier_ica_obj = icasso_obj.fit(raw_fname)
+Modificación realizada por: John F. Ochoa Gómez, Paula Andrea C Cano, Sara Gárces, Juan Esteba Pineda
+Fecha: 08-2025
+
+Motivo de la modificación:
+Adaptar el código original para su uso con datos de EEG de baja densidad (8 canales),
+optimizando el procesamiento ICA y filtrado para datasets reducidos. La modificación permite:
+- Seleccionar solo los 8 canales de interés.
+- Ajustar parámetros de ICA para bajo número de canales.
+
+Integración:
+Este fragmento se anexa para ejecutar el script a un conjunto de datos seleccionados de una
+base de datos local.
+
+Notas:
+- Mantiene la lógica del script original, pero ajusta los parámetros `n_components` y
+  el filtrado según el número reducido de canales.
+- Compatible únicamente con datos EEG (sin MEG u otros sensores).
+
+Entradas:
+- Archivo .fif con la señal filtrada por un filtro wavelet.
+
+Salidas:
+- Archivo .npz con sufijo anexo "_wICAsso_raw.fif", contiene la señal filtrada y
+  descompuesta por FourierICA de forma iterativa.
+- Archivo .npz con sufijo anexo "_ICAdata.npz", contiene las matrices W, A y quality.
+
+Dependencias:
+- Python 3.6.13
+- numpy
+- mne 
+- os
+- warnings
+- matplotlib.pyplot
+- seaborn
+- scipy.io
+"""
 
 import os
 import mne
 import scipy.io as sio
+import warnings
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Ignorar error:
 # deprecatedC:\Users\paula\anaconda3\envs\jumeg_cuda\lib\site-packages\mne\io\tag.py:427: DeprecationWarning: 
 # tostring() is deprecated. Use tobytes() instead.
 # ch_name = ch_name[:np.argmax(ch_name == b'')].tostring()
-import warnings
+# import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*tostring\\(\\) is deprecated.*")
 
 
 path_data = 'C:/Users/paula/OneDrive/Escritorio/Portables/eeg_wavelet'
 output_folder = 'C:/Users/paula/OneDrive/Escritorio/Portables/eeg_wavelet/wICASSO/'
-# Lista todos los archivos .fif en la carpeta
+
+#  Lista todos los archivos .fif en la carpeta
 fif_files = [f for f in os.listdir(path_data)]
 #fif_files = [fif_files[0]]
 
 # Crea la instancia de ICASSO una sola vez si aplica
 #icasso_obj = JuMEG_icasso()
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-from mne_icalabel.gui import label_ica_components
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+# def plot_ica_topomap(A, raw, componente_idx): # 
+#     # Extraer el patrón espacial del componente
+#     pattern = A[:, componente_idx].real  # o np.abs(...) si tienes complejos
 
-def plot_ica_topomap(A, raw, componente_idx):
-    # Extraer el patrón espacial del componente
-    pattern = A[:, componente_idx].real  # o np.abs(...) si tienes complejos
-
-    # Crear el topomap
-    mne.viz.plot_topomap(
-        pattern, 
-        raw.info, 
-        show=True,
-        names=raw.ch_names,
-        show_names=False,
-        cmap='RdBu_r',
-        contours=6,
-        outlines='head'
-    )
-    plt.title(f"ICA{componente_idx:03d}")
+#     # Crear el topomap
+#     mne.viz.plot_topomap(
+#         pattern, 
+#         raw.info, 
+#         show=True,
+#         names=raw.ch_names,
+#         show_names=False,
+#         cmap='RdBu_r',
+#         contours=6,
+#         outlines='head'
+#     )
+#    plt.title(f"ICA{componente_idx:03d}")
 
 # Procesa cada archivo
 for fif_file in fif_files:
@@ -1852,66 +1888,74 @@ for fif_file in fif_files:
         print(f"Skipping {fif_file}, not a .fif file.")
         continue
     
-    icasso_obj = JuMEG_icasso()
-    raw_path = os.path.join(path_data, fif_file)
+    icasso_obj = JuMEG_icasso() # Crea una nueva instancia de JuMEG_icasso para cada archivo
+    raw_path = os.path.join(path_data, fif_file) # Ruta completa del archivo .fif
     print("---------------------------------------------------")
     print(f">>>>>> PROCESANDO: {raw_path}")
 
-    raw = mne.io.read_raw_fif(raw_path, preload=True)
+    raw = mne.io.read_raw_fif(raw_path, preload=True) # Carga el archivo .fif
 
     raw = raw.filter(0, 50) #raw = raw.filter(l_freq=0.1, h_freq=50) # Filtrado de 0.1 a 50 Hz
 
     # Ejecuta ICA Fourier
     W, A, quality, fourier_ica_obj = icasso_obj.fit(raw_path, tmax_win = 2)
 
-    #se agregan los resultados al objeto raw
-    raw.info['ICA'] = {
-        'W': W,
-        'A': A,
-        'quality': quality
-    }
-  
-    # my_annot = mne.Annotations('W': W,
-    #                        'A': A,
-    #                        'quality': quality)
+    #print(raw.info)
+    # #se agregan los resultados al objeto raw (No quedan guardados dentro del objeto raw cuando se ejecuta el save)
+    # raw.info['ICA'] = {
+    #     'W': W,
+    #     'A': A,
+    #     'quality': quality
+    # }
+    
+    # dicw = raw.info['ICA'] 
+    # ica = mne.preprocessing.ICA(n_components=8, random_state=97, max_iter=1000) # Crea un objeto ICA con 8 componentes, una semilla aleatoria y un máximo de 1000 iteraciones
 
-    # raw.set_annotations(my_annot)
-    print(raw.info)
-    dicw = raw.info['ICA'] 
-    ica = mne.preprocessing.ICA(n_components=8, random_state=97, max_iter=1000) # Crea un objeto ICA con 8 componentes, una semilla aleatoria y un máximo de 1000 iteraciones
-
-    # Ingresar las matrices calculadas
-    ica._unmixing = dicw['W']       # matriz de separación
-    ica._mixing = dicw['A']     # matriz de mezcla (inversa)
-    ica._quality = dicw['quality'] # calidad de la descomposición ICA
-    ica._fitted = True # Marca el objeto ICA como ajustado
+    # # Ingresar las matrices calculadas
+    # ica._unmixing = dicw['W']       # matriz de separación
+    # ica._mixing = dicw['A']     # matriz de mezcla (inversa)
+    # ica._quality = dicw['quality'] # calidad de la descomposición ICA
+    # ica._fitted = True # Marca el objeto ICA como ajustado
 
 
-# Se debería abrir una ventana de GUI para etiquetar los componentes ICA
-    gui = label_ica_components(raw, ica) # Llama a la función que permite etiquetar los componentes ICA mediante una GUI
+# # Se debería abrir una ventana de GUI para etiquetar los componentes ICA
+    #gui = label_ica_components(raw, ica) # Llama a la función que permite etiquetar los componentes ICA mediante una GUI
+    
     # Guarda el raw con los resultados embebidos
     #output_fif = raw_path.replace('.fif', '_wICAsso.fif')
-    output_fif = os.path.basename(fif_file).replace('.fif', '_wICAsso.fif')
+    output_fif = os.path.basename(fif_file).replace('.fif', '_wICAsso_raw.fif')
     output_fif_path = os.path.join(output_folder, output_fif)
-    raw.save(output_fif_path, overwrite=True)
+    raw.save(output_fif_path, overwrite=False)
+
+    np.savez(output_fif_path.replace('.fif', '_ICAdata.npz'), W=W, A=A, quality=quality)
+
+    
+    # # Guarda los resultados en CSV  ## YA SE CREARON TODOS##
+    # outputw_csv = os.path.basename(fif_file).replace('.fif', '_wICAsso_unmixing.csv')
+    # outputa_csv = os.path.basename(fif_file).replace('.fif', '_wICAsso_mixing.csv')
+    # output_quality_csv = os.path.basename(fif_file).replace('.fif', '_wICAsso_quality.csv')
+    
+    # W_df = pd.DataFrame(W)
+    # A_df = pd.DataFrame(A)
+    # quality_df = pd.DataFrame(quality, columns=['quality'])
+
+    # W_df.to_csv(os.path.join(output_folder, outputw_csv))
+    # A_df.to_csv(os.path.join(output_folder, outputa_csv))
+    # quality_df.to_csv(os.path.join(output_folder, output_quality_csv))
 
     print(f"Resultados guardados en: {output_fif_path}")
 
     # Aquí puedes guardar resultados o imprimir información adicional si quieres
     print(f"Archivo procesado: {fif_file}")
-    print("W")
-    print(W.shape)	
-    print("A")
-    print(A.shape)
-    print("quality")
-    print(quality)
-    print("fourier_ica_obj")
+    print(f"W: {W.shape}")
+    print(f"A: {A.shape}")
+    print(f"Quality: {quality}")
     print(fourier_ica_obj)
 
-    #dic = {'w': W, 'a': A, 'quality': quality} # como guardar estos campos en el objeto MNE raw
+    #dic = {'w': W, 'a': A, 'quality': quality} # ¿como guardar estos campos en el objeto MNE raw?
     #icasso = mne.preprocessing.ICA(n_components=W.shape[0])
 
-    # Ingresar las matrices calculadas
+    # Ingresar las matrices calculadas como un archivo .mat
     # icasso._unmixing = W       # matriz de separación
     # icasso._mixing = A      # matriz de mezcla (inversa)
     # sio.savemat(raw_path + '.mat', dic)
