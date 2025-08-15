@@ -1876,7 +1876,6 @@ for fif_file in fif_files:
     #                        'quality': quality)
 
     # raw.set_annotations(my_annot)
-
     print(raw.info)
     dicw = raw.info['ICA'] 
     ica = mne.preprocessing.ICA(n_components=8, random_state=97, max_iter=1000) # Crea un objeto ICA con 8 componentes, una semilla aleatoria y un máximo de 1000 iteraciones
